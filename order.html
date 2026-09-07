@@ -127,8 +127,8 @@ body{display:flex;flex-direction:column;height:100dvh}
 <div class="header">
   <h1 id="pageTitle">家庭点餐</h1>
   <div class="right">
-    <span class="status-dot" id="statusDot" title="连接状态"></span>
-    <button onclick="openBackendSettings()" title="后端地址">⚙️</button>
+    <span class="status-dot offline" id="statusDot" title="连接状态"></span>
+    <button onclick="openBackendSettings()" title="后端配置">⚙️</button>
     <button id="modeBtn">切换管理</button>
   </div>
 </div>
@@ -191,40 +191,29 @@ body{display:flex;flex-direction:column;height:100dvh}
   </div>
 </div>
 
-<!-- Socket.IO 客户端 CDN（本地/云端通用） -->
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<!-- Supabase JS Client v2 -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 /* ================================================================
-   后端地址配置
-   默认同源（window.location.origin），可通过 ⚙️ 按钮手动指定云端地址
+   Supabase 配置
+   通过 ⚙️ 按钮设置 Project URL 和 anon key
    ================================================================ */
-const API_BASE = (function(){
-  const saved = localStorage.getItem('backend_url');
-  if(saved) return saved.replace(/\/$/, '');   // 去尾部斜杠
-  // 如果前端是通过 file:// 打开的（离线 PWA），同源就是无效的，默认给个空让用户自己配
-  return location.protocol === 'file:' ? '' : location.origin;
-})();
+let supabase = null;
 
-async function apiFetch(path, options){
-  if(!API_BASE){ alert('请先点右上角 ⚙️ 配置后端地址'); throw new Error('no backend'); }
-  const url = API_BASE + path;
-  const res = await fetch(url, options);
-  const data = await res.json().catch(()=>({}));
-  if(!res.ok) throw new Error(data.error || `请求失败 (${res.status})`);
-  return data;
+function initSupabase(){
+  const url = localStorage.getItem('supabase_url');
+  const key = localStorage.getItem('supabase_key');
+  if(!url || !key) return false;
+  try {
+    supabase = window.supabase.createClient(url, key, {
+      realtime: { params: { eventsPerSecond: 5 } }
+    });
+    return true;
+  } catch(e){
+    console.error('Supabase init failed:', e);
+    return false;
+  }
 }
-const API = {
-  all:        ()                     => apiFetch('/api/all'),
-  dish:       (data)                 => apiFetch('/api/dish',  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}),
-  delDish:    (id)                   => apiFetch('/api/dish/'+id, {method:'DELETE'}),
-  category:   (data)                 => apiFetch('/api/category', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}),
-  delCategory:(i)                    => apiFetch('/api/category/'+i, {method:'DELETE'}),
-  order:      (data)                 => apiFetch('/api/order', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}),
-  orderStatus:(id,status)            => apiFetch('/api/order/'+id+'/status', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})}),
-  delOrder:   (id)                   => apiFetch('/api/order/'+id, {method:'DELETE'}),
-  upload:     (file)                 => { const fd = new FormData(); fd.append('file',file); return apiFetch('/api/upload',{method:'POST',body:fd}); },
-  login:      (pwd,newPwd)           => apiFetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pwd,newPwd})})
-};
 
 /* 状态 */
 let DB = { categories: [], dishes: [], orders: [], adminPwd: '123456' };
@@ -241,15 +230,35 @@ let uploadBuffer = null;
 
 /* 加载全量数据 */
 async function loadDB(){
-  if(!API_BASE){
+  if(!supabase){
     document.getElementById('statusDot').classList.add('offline');
     document.getElementById('statusDot').title = '未配置后端';
     document.getElementById('catBar').innerHTML = '';
-    document.getElementById('dishList').innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="icon">⚙️</div><div>请点右上角按钮配置后端地址</div></div>`;
+    document.getElementById('dishList').innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="icon">⚙️</div><div>请点右上角按钮配置 Supabase 地址</div></div>`;
     return;
   }
   try {
-    DB = await API.all();
+    const [{data: dishes, error: e1}, {data: categories, error: e2},
+           {data: orders, error: e3}, {data: settings, error: e4}] = await Promise.all([
+      supabase.from('dishes').select('*'),
+      supabase.from('categories').select('*').order('sort_order'),
+      supabase.from('orders').select('*').order('time', {ascending:false}),
+      supabase.from('settings').select('*')
+    ]);
+    if(e1) throw e1;
+    if(e2) throw e2;
+    if(e3) throw e3;
+
+    DB.dishes = dishes || [];
+    DB.categories = (categories || []).map(c => c.name);
+    DB.orders = (orders || []).map(o => ({
+      id: o.id, items: typeof o.items === 'string' ? JSON.parse(o.items) : o.items,
+      note: o.note || '', total: Number(o.total) || 0,
+      time: o.time || Date.parse(o.created_at), status: o.status || 'pending'
+    }));
+    const pwdRow = (settings || []).find(s => s.key === 'adminPwd');
+    DB.adminPwd = pwdRow ? pwdRow.value : '123456';
+
     document.getElementById('statusDot').classList.remove('offline');
     document.getElementById('statusDot').title = '已连接';
     if(!state.activeCat || !DB.categories.includes(state.activeCat)){
@@ -262,39 +271,46 @@ async function loadDB(){
   }
 }
 
-/* Socket.IO 连接（指向可配置的后端地址） */
-let socket = null;
-function connectSocket(){
-  if(!API_BASE) return;
+/* Supabase Realtime 订阅 */
+let realtimeChannel = null;
+function connectRealtime(){
+  if(!supabase) return;
   try {
-    socket = io(API_BASE, { transports: ['websocket','polling'], reconnection: true, reconnectionDelay: 1000 });
-    socket.on('connect', () => {
+    if(realtimeChannel) supabase.removeChannel(realtimeChannel);
+    realtimeChannel = supabase.channel('family-order-realtime');
+    ['dishes','categories','orders','settings'].forEach(table => {
+      realtimeChannel.on('postgres_changes',
+        { event: '*', schema: 'public', table },
+        (payload) => {
+          console.log('[realtime] ' + table + ' changed:', payload.eventType);
+          loadDB().then(() => {
+            render();
+            if(state.mode === 'admin' && table === 'orders'){
+              const pendingCount = DB.orders.filter(o => o.status === 'pending').length;
+              if(DB.orders.length > state.lastOrderCount){
+                const diff = DB.orders.length - state.lastOrderCount;
+                showNewOrderToast(diff);
+              }
+            }
+            state.lastOrderCount = DB.orders.length;
+          });
+        }
+      );
+    });
+    realtimeChannel.subscribe((status) => {
       const dot = document.getElementById('statusDot');
-      dot.classList.remove('offline');
-      dot.title = '已连接';
-      console.log('[ws] connected →', API_BASE);
-    });
-    socket.on('disconnect', () => {
-      const dot = document.getElementById('statusDot');
-      dot.classList.add('offline');
-      dot.title = '离线中，尝试重连...';
-      console.log('[ws] disconnected');
-    });
-    socket.on('connect_error', (e) => {
-      console.warn('[ws] connect_error:', e.message);
-    });
-    socket.on('dataChanged', async (payload) => {
-      console.log('[ws] dataChanged:', payload.info);
-      await loadDB();
-      render();
-      if(state.mode==='admin' && DB.orders.length > state.lastOrderCount){
-        const diff = DB.orders.length - state.lastOrderCount;
-        showNewOrderToast(diff);
+      if(status === 'SUBSCRIBED'){
+        dot.classList.remove('offline');
+        dot.title = '已连接（实时）';
+        console.log('[realtime] subscribed');
+      } else if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT'){
+        dot.classList.add('offline');
+        dot.title = '实时连接断开，重连中...';
+        console.warn('[realtime] status:', status);
       }
-      state.lastOrderCount = DB.orders.length;
     });
   } catch(e){
-    console.warn('socket init failed:', e);
+    console.warn('realtime init failed:', e);
   }
 }
 
@@ -311,6 +327,84 @@ function showNewOrderToast(n){
   document.body.appendChild(el);
   setTimeout(()=>el.remove(), 5000);
 }
+
+/* ================================================================
+   数据操作（Supabase CRUD）
+   ================================================================ */
+const DB_API = {
+  // 菜品
+  async saveDish(data){
+    const payload = {
+      id: data.id || Date.now().toString(36),
+      name: data.name, category: data.category,
+      desc: data.desc || '', price: Number(data.price) || 0,
+      recipe: data.recipe || '', image: data.image || null
+    };
+    if(data.id){
+      const { error } = await supabase.from('dishes').update(payload).eq('id', data.id);
+      if(error) throw error;
+    } else {
+      const { error } = await supabase.from('dishes').insert(payload);
+      if(error) throw error;
+    }
+  },
+  async delDish(id){
+    const { error } = await supabase.from('dishes').delete().eq('id', id);
+    if(error) throw error;
+  },
+  // 分类
+  async addCategory(name){
+    const { error } = await supabase.from('categories').insert({ name });
+    if(error) throw error;
+  },
+  async updateCategory(oldName, newName){
+    // 先更新分类表
+    const { error: e1 } = await supabase.from('categories').update({ name: newName }).eq('name', oldName);
+    if(e1) throw e1;
+    // 再更新菜品表中的分类字段
+    const { error: e2 } = await supabase.from('dishes').update({ category: newName }).eq('category', oldName);
+    if(e2) throw e2;
+  },
+  async delCategory(index){
+    const name = DB.categories[index];
+    const { error } = await supabase.from('categories').delete().eq('name', name);
+    if(error) throw error;
+  },
+  // 订单
+  async createOrder(items, note, total){
+    const id = Date.now().toString(36).toUpperCase();
+    const { error } = await supabase.from('orders').insert({
+      id, items, note, total: Number(total) || 0,
+      status: 'pending', time: Date.now()
+    });
+    if(error) throw error;
+  },
+  async updateOrderStatus(id, status){
+    const { error } = await supabase.from('orders').update({ status }).eq('id', id);
+    if(error) throw error;
+  },
+  async delOrder(id){
+    const { error } = await supabase.from('orders').delete().eq('id', id);
+    if(error) throw error;
+  },
+  // 图片上传到 Supabase Storage
+  async uploadImage(file){
+    const ext = file.name.split('.').pop().toLowerCase();
+    const fileName = `dish-${Date.now()}.${ext}`;
+    const { data, error } = await supabase.storage.from('dish-images').upload(fileName, file, { cacheControl: '3600' });
+    if(error) throw error;
+    const { data: urlData } = supabase.storage.from('dish-images').getPublicUrl(fileName);
+    return { url: urlData.publicUrl };
+  },
+  // 登录 + 改密码
+  async login(pwd, newPwd){
+    if(pwd !== DB.adminPwd) throw new Error('密码错误');
+    if(newPwd && newPwd.trim()){
+      const { error } = await supabase.from('settings').update({ value: newPwd.trim() }).eq('key', 'adminPwd');
+      if(error) throw error;
+    }
+  }
+};
 
 /* ================================================================
    渲染
@@ -365,7 +459,7 @@ function renderDishes(){
   let html = dishes.map(d=>{
     const qty = state.cart[d.id]||0;
     const imgHtml = d.image
-      ? `<div class="img" style="background-image:url(${d.image.startsWith('http')?d.image:d.image})"></div>`
+      ? `<div class="img" style="background-image:url('${d.image}')"></div>`
       : `<div class="img"><div class="placeholder">无图片</div></div>`;
     const stepperHtml = state.mode==='order' ? `
       <div class="stepper">
@@ -410,8 +504,7 @@ function renderCatManage(){
 function renderOrders(){
   const list = document.getElementById('orderList');
   if(!DB.orders.length){ list.innerHTML = `<div class="empty"><div class="icon">📋</div><div>暂无订单</div></div>`; return; }
-  const sorted = [...DB.orders].reverse();
-  list.innerHTML = sorted.map(o=>{
+  list.innerHTML = DB.orders.map(o=>{
     const itemsHtml = o.items.map(it=>`<div class="order-item"><span>${it.name} ×${it.qty}</span></div>`).join('');
     const statusClass = o.status==='done' ? 'done' : '';
     const statusText = o.status==='done' ? '已完成' : '待处理';
@@ -439,8 +532,7 @@ function renderOrders(){
 function renderMyOrders(){
   const list = document.getElementById('orderList');
   if(!DB.orders.length){ list.innerHTML = `<div class="empty"><div class="icon">📋</div><div>还没有订单</div></div>`; return; }
-  const sorted = [...DB.orders].reverse();
-  list.innerHTML = sorted.map(o=>{
+  list.innerHTML = DB.orders.map(o=>{
     const itemsHtml = o.items.map(it=>`<div class="order-item"><span>${it.name} ×${it.qty}</span></div>`).join('');
     const statusClass = o.status==='done' ? 'done' : '';
     const statusText = o.status==='done' ? '厨师正在做🍳' : '等待接单⏳';
@@ -533,7 +625,7 @@ async function submitOrder(){
   const total = items.reduce((s,it)=>s+it.price*it.qty,0);
   const note = document.getElementById('orderNote')?.value || '';
   try {
-    await API.order({ items, note, total });
+    await DB_API.createOrder(items, note, total);
     state.cart = {};
     closeModal();
     render();
@@ -588,7 +680,7 @@ async function handleImage(e){
   if(!f) return;
   try {
     toast('上传中...');
-    const res = await API.upload(f);
+    const res = await DB_API.uploadImage(f);
     uploadBuffer = res.url;
     const area = document.getElementById('uploadArea');
     area.innerHTML = `<img class="preview" src="${res.url}"><div style="margin-top:6px;font-size:12px">点击更换</div>
@@ -609,7 +701,7 @@ async function saveDish(){
     image: uploadBuffer || null
   };
   try {
-    await API.dish(data);
+    await DB_API.saveDish(data);
     closeModal();
     toast('💾 已保存');
   } catch(e){ alert('保存失败: '+e.message); }
@@ -617,7 +709,7 @@ async function saveDish(){
 
 async function deleteDish(id){
   if(!confirm('确定删除这道菜吗？')) return;
-  try { await API.delDish(id); toast('已删除'); } catch(e){ alert(e.message); }
+  try { await DB_API.delDish(id); toast('已删除'); } catch(e){ alert(e.message); }
 }
 
 function showDishDetail(id){
@@ -639,7 +731,7 @@ async function addCategory(){
   const v = input.value.trim();
   if(!v){ alert('请输入分类名'); return; }
   try {
-    await API.category({ name: v });
+    await DB_API.addCategory(v);
     input.value='';
   } catch(e){ alert(e.message); }
 }
@@ -647,14 +739,14 @@ async function editCategoryName(i){
   const old = DB.categories[i];
   const v = prompt('输入新名称', old);
   if(!v||v===old) return;
-  try { await API.category({ name: v, oldName: old }); } catch(e){ alert(e.message); }
+  try { await DB_API.updateCategory(old, v); } catch(e){ alert(e.message); }
 }
 async function deleteCategory(i){
   const c = DB.categories[i];
   const dishCount = DB.dishes.filter(d=>d.category===c).length;
   if(dishCount){ alert(`该分类下有 ${dishCount} 道菜，请先删除或移动菜品`); return; }
   if(!confirm(`确定删除分类「${c}」？`)) return;
-  try { await API.delCategory(i); } catch(e){ alert(e.message); }
+  try { await DB_API.delCategory(i); } catch(e){ alert(e.message); }
 }
 
 /* ================================================================
@@ -662,11 +754,11 @@ async function deleteCategory(i){
    ================================================================ */
 async function toggleOrderStatus(id){
   const o = DB.orders.find(x=>x.id===id);
-  try { await API.orderStatus(id, o.status==='done'?'pending':'done'); } catch(e){ alert(e.message); }
+  try { await DB_API.updateOrderStatus(id, o.status==='done'?'pending':'done'); } catch(e){ alert(e.message); }
 }
 async function deleteOrder(id){
   if(!confirm('删除此订单？')) return;
-  try { await API.delOrder(id); } catch(e){ alert(e.message); }
+  try { await DB_API.delOrder(id); } catch(e){ alert(e.message); }
 }
 
 /* ================================================================
@@ -697,7 +789,7 @@ async function doLogin(){
   const pwd = document.getElementById('adminPwd').value;
   const newPwd = document.getElementById('newPwd').value;
   try {
-    await API.login(pwd, newPwd);
+    await DB_API.login(pwd, newPwd);
     state.mode = 'admin';
     state.lastOrderCount = DB.orders.length;
     closeModal();
@@ -761,35 +853,36 @@ function toast(msg){
 }
 
 /* ================================================================
-   ⚙️ 后端地址设置
+   ⚙️ Supabase 配置
    ================================================================ */
 function openBackendSettings(){
-  openModal('⚙️ 后端地址设置', `
+  openModal('⚙️ Supabase 配置', `
     <div class="form-group">
-      <label>后端地址（以 http:// 或 https:// 开头，末尾不要 /）</label>
-      <input type="text" id="beUrl" placeholder="如 https://family-order.glitch.me" value="${API_BASE}">
-      <div style="font-size:12px;color:#999;margin-top:6px">
-        本机后端: http://localhost:3000<br>
-        局域网:   http://192.168.x.x:3000<br>
-        云端(Glitch): 部署后把网址粘进来
-      </div>
+      <label>Project URL（Supabase → Settings → API）</label>
+      <input type="text" id="sbUrl" placeholder="https://xxxx.supabase.co" value="${localStorage.getItem('supabase_url')||''}">
     </div>
     <div class="form-group">
-      <label>快捷选择</label>
-      <div style="display:flex;flex-wrap:wrap;gap:6px">
-        <button onclick="document.getElementById('beUrl').value=location.protocol+'//'+location.host" style="padding:6px 12px;border-radius:16px;border:1px solid #ddd;background:#f5f5f5;font-size:12px;cursor:pointer">🖥️ 当前同源</button>
-        <button onclick="document.getElementById('beUrl').value='http://localhost:3000'" style="padding:6px 12px;border-radius:16px;border:1px solid #ddd;background:#f5f5f5;font-size:12px;cursor:pointer">💻 localhost</button>
-      </div>
+      <label>anon public key（同上页面）</label>
+      <input type="text" id="sbKey" placeholder="eyJhbGci..." value="${localStorage.getItem('supabase_key')||''}">
+    </div>
+    <div style="font-size:12px;color:#999;margin-top:6px">
+      1. 打开 <a href="https://supabase.com" target="_blank">supabase.com</a> 注册（免费，不用绑卡）<br>
+      2. 创建项目 → 等 2 分钟初始化<br>
+      3. 左侧 Project Settings → API<br>
+      4. 复制 Project URL 和 anon public key 粘到这里<br>
+      5. 在 SQL Editor 运行 supabase-schema.sql
     </div>
   `, `
-    <button class="btn-secondary" onclick="localStorage.removeItem('backend_url');closeModal();toast('已清空，下次打开重新读取同源地址')">清除</button>
+    <button class="btn-secondary" onclick="localStorage.removeItem('supabase_url');localStorage.removeItem('supabase_key');closeModal();toast('已清除，刷新后重新配置')">清除</button>
     <button class="btn-primary" onclick="saveBackend()">保存并重连</button>
   `);
 }
 function saveBackend(){
-  const v = document.getElementById('beUrl').value.trim().replace(/\/$/, '');
-  if(!v){ alert('请输入有效地址'); return; }
-  localStorage.setItem('backend_url', v);
+  const url = document.getElementById('sbUrl').value.trim().replace(/\/$/, '');
+  const key = document.getElementById('sbKey').value.trim();
+  if(!url || !key){ alert('请填写完整'); return; }
+  localStorage.setItem('supabase_url', url);
+  localStorage.setItem('supabase_key', key);
   closeModal();
   toast('✅ 已保存，刷新生效');
   setTimeout(()=>location.reload(), 800);
@@ -806,10 +899,13 @@ if('serviceWorker' in navigator && location.protocol !== 'file:'){
 }
 
 (async function init(){
-  await loadDB();
-  connectSocket();
-  state.activeCat = DB.categories[0] || '';
-  state.lastOrderCount = DB.orders.length;
+  const ok = initSupabase();
+  if(ok){
+    await loadDB();
+    connectRealtime();
+    state.activeCat = DB.categories[0] || '';
+    state.lastOrderCount = DB.orders.length;
+  }
   render();
 })();
 </script>
