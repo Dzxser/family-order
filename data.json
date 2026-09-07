@@ -18,6 +18,15 @@
       "price": 0,
       "recipe": "",
       "image": null
+    },
+    {
+      "id": "mtrav8yw",
+      "name": "手打矿泉水",
+      "category": "饮料",
+      "desc": "",
+      "price": 100,
+      "recipe": "",
+      "image": null
     }
   ],
   "orders": [],
