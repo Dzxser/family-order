@@ -1,9 +1,9 @@
 // ================================================================
 // 家庭点餐 - 后端服务
-// 本地：npm start      云端：Render.com 自动
-// 数据持久化：本地 data.json + GitHub Gist 双保险
+// 本地：npm start      云端：Railway 自动
+// 数据持久化：本地 data.json + GitHub Repo 双保险
 //   - 本地开发只读写 data.json
-//   - 云端（Render 等）如果配置了 GITHUB_TOKEN + GIST_ID，自动同步到 Gist
+//   - 云端（Railway 等）如果配置了 GITHUB_TOKEN，自动把 data.json 同步到 GitHub 仓库
 // ================================================================
 const express   = require('express');
 const http      = require('http');
@@ -17,13 +17,15 @@ const server = http.createServer(app);
 const io     = socketIo(server, { cors: { origin: '*' } });
 
 const PORT       = process.env.PORT || 3000;
-// 持久化数据目录：本地用项目根目录，Railway 用挂载的 /app/data 持久化磁盘
-const DATA_DIR   = process.env.DATA_DIR || (fs.existsSync('/app/data') ? '/app/data' : __dirname);
+const DATA_DIR   = process.env.DATA_DIR || (__dirname);
 const DATA_FILE  = path.join(DATA_DIR, 'data.json');
-const GH_TOKEN   = process.env.GITHUB_TOKEN || '';   // Render 环境变量（可不设）
-const GIST_ID    = process.env.GIST_ID || '';        // Render 环境变量（可不设）
-const GIST_URL   = 'https://api.github.com/gists/' + GIST_ID;
-const GIST_ENABLED = !!(GH_TOKEN && GIST_ID);
+const GH_TOKEN   = process.env.GITHUB_TOKEN || '';
+const GH_OWNER   = process.env.GITHUB_OWNER || 'Dzxser';
+const GH_REPO    = process.env.GITHUB_REPO || 'family-order';
+const GH_BRANCH  = process.env.GITHUB_BRANCH || 'main';
+const GH_FILE    = process.env.GITHUB_DATA_FILE || 'data.json';
+const GH_API_URL = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`;
+const GH_ENABLED = !!GH_TOKEN;
 
 // 确保数据目录存在
 if(!fs.existsSync(DATA_DIR)){ try { fs.mkdirSync(DATA_DIR, { recursive: true }); console.log('[data] 已创建目录:', DATA_DIR); } catch(e){ console.warn('[data] 创建目录失败:', e.message); } }
@@ -48,54 +50,65 @@ function saveLocalDB(db){
   catch(e){ console.error('[data] 写本地失败:', e.message); }
 }
 
-// 从 Gist 拉取（异步）
-async function loadFromGist(){
-  if(!GIST_ENABLED) return null;
+// 从 GitHub Repo 拉取 data.json
+async function loadFromGitHub(){
+  if(!GH_ENABLED) return null;
   try {
-    const r = await fetch(GIST_URL, {
+    const r = await fetch(GH_API_URL, {
       headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json' }
     });
-    if(!r.ok){ console.warn('[gist] 拉取失败', r.status); return null; }
-    const gist = await r.json();
-    const file = gist.files && gist.files['data.json'];
-    if(!file || !file.content){ return null; }
-    return JSON.parse(file.content);
-  } catch(e){ console.warn('[gist] 拉取异常:', e.message); return null; }
+    if(!r.ok){ console.warn('[gh] 拉取失败', r.status); return null; }
+    const file = await r.json();
+    if(!file.content) return null;
+    const decoded = Buffer.from(file.content.replace(/\n/g,''), 'base64').toString('utf-8');
+    return JSON.parse(decoded);
+  } catch(e){ console.warn('[gh] 拉取异常:', e.message); return null; }
 }
 
-// 推送 Gist（异步，后台跑，不阻塞主流程）
-async function pushToGist(db){
-  if(!GIST_ENABLED) return;
+// 推送到 GitHub Repo（后台异步跑，不阻塞主流程）
+let cachedSha = null;
+async function pushToGitHub(db){
+  if(!GH_ENABLED) return;
   try {
-    await fetch(GIST_URL, {
-      method: 'PATCH',
+    // 先获取当前 sha（缓存命中就直接用）
+    let sha = cachedSha;
+    if(!sha){
+      const r = await fetch(GH_API_URL, {
+        headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json' }
+      });
+      if(r.ok){ const f = await r.json(); sha = f.sha; cachedSha = sha; }
+    }
+    await fetch(GH_API_URL, {
+      method: 'PUT',
       headers: {
         Authorization: `Bearer ${GH_TOKEN}`,
         Accept: 'application/vnd.github+json',
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        description: '家庭点餐数据 - data.json',
-        files: {
-          'data.json': { content: JSON.stringify(db, null, 2) }
-        }
+        message: '📝 自动同步 data.json',
+        content: Buffer.from(JSON.stringify(db, null, 2)).toString('base64'),
+        branch: GH_BRANCH,
+        ...(sha ? { sha } : {})
       })
     });
-  } catch(e){ console.warn('[gist] 推送异常:', e.message); }
+    // sha 会变，清缓存
+    cachedSha = null;
+  } catch(e){ console.warn('[gh] 推送异常:', e.message); cachedSha = null; }
 }
 
-// 启动时：先拉 Gist → 有就用，没有用本地，没有本地就 fresh
+// 启动时：先拉 GitHub → 有就用，没有用本地，没有本地就 fresh
 let DB;
 async function initDB(){
-  // 1. 先看 Gist（云端最新）
-  const fromGist = await loadFromGist();
-  if(fromGist){
-    console.log('[data] ✅ 从 Gist 拉取');
-    DB = fromGist;
-    saveLocalDB(DB);   // 顺手同步到本地
+  // 1. 先看 GitHub Repo（云端最新）
+  const fromGH = await loadFromGitHub();
+  if(fromGH){
+    console.log('[data] ✅ 从 GitHub 拉取');
+    DB = fromGH;
+    saveLocalDB(DB);
     return;
   }
-  // 2. Gist 没有或失败，用本地
+  // 2. GitHub 没有或失败，用本地
   const fromLocal = loadLocalDB();
   if(fromLocal){
     console.log('[data] ✅ 使用本地 data.json');
@@ -106,12 +119,13 @@ async function initDB(){
   console.log('[data] ✅ 新建 data.json');
   DB = freshDB();
   saveLocalDB(DB);
+  if(GH_ENABLED) pushToGitHub(DB);  // 首次也推上去
 }
 
-// 统一保存：本地同步写，Gist 异步推
+// 统一保存：本地同步写，GitHub 异步推
 function saveDB(){
   saveLocalDB(DB);
-  if(GIST_ENABLED) pushToGist(DB);
+  if(GH_ENABLED) pushToGitHub(DB);
 }
 
 // ---- 中间件 ----
@@ -223,10 +237,15 @@ app.post('/api/login', (req, res) => {
   res.json({ ok:true });
 });
 
-// 手动触发 Gist 同步（Render 可能需要验证）
+// 手动触发 GitHub 同步
 app.post('/api/sync', async (req, res) => {
-  await pushToGist(DB);
-  res.json({ ok:true, gistEnabled: GIST_ENABLED });
+  await pushToGitHub(DB);
+  res.json({ ok:true, githubEnabled: GH_ENABLED });
+});
+
+// 健康检查
+app.get('/health', (req, res) => {
+  res.json({ ok: true, githubEnabled: GH_ENABLED, dataFile: DATA_FILE });
 });
 
 // ---- Socket.IO ----
@@ -243,7 +262,7 @@ initDB().then(() => {
     console.log('====================================');
     console.log(' 家庭点餐服务已启动');
     console.log(` 端口: ${PORT}`);
-    console.log(` Gist持久化: ${GIST_ENABLED ? '✅ 已启用' : '⏸ 未配置（仅本地）'}`);
+    console.log(` GitHub持久化: ${GH_ENABLED ? '✅ 已启用 (' + GH_OWNER + '/' + GH_REPO + ': ' + GH_FILE + ')' : '⏸ 未配置'}`);
     console.log(' 管理员密码: 123456');
     console.log('====================================');
   });
