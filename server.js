@@ -111,6 +111,7 @@ function saveDB(){
 
 // ---- 中间件 ----
 app.use(express.json({ limit: '10mb' }));
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'order.html')));
 app.use(express.static(__dirname));
 
 // ---- 上传（内存 → base64 data URL → 存进 data.json）----
