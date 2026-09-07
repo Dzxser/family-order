@@ -27,6 +27,24 @@
       "price": 100,
       "recipe": "",
       "image": null
+    },
+    {
+      "id": "mtraxzx8",
+      "name": "番茄🍅炒白起豪",
+      "category": "蔬菜",
+      "desc": "",
+      "price": 20000,
+      "recipe": "",
+      "image": null
+    },
+    {
+      "id": "mtraxzxb",
+      "name": "番茄🍅炒白起豪",
+      "category": "蔬菜",
+      "desc": "",
+      "price": 20000,
+      "recipe": "",
+      "image": null
     }
   ],
   "orders": [],
