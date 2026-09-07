@@ -1,0 +1,13 @@
+# Render.com 部署配置
+# 不用手动改，Render 会自动识别 package.json 的 start 命令
+services:
+  - type: web
+    name: family-order
+    env: node
+    buildCommand: npm install
+    startCommand: node server.js
+    plan: free
+    # 如果端口不对可以取消注释手动指定
+    # envVars:
+    #   - key: PORT
+    #     value: "10000"
