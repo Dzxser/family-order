@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#ff6b35">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="https://api.iconify.design/emojione/red-apple.svg">
+<title>家庭点餐</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{--primary:#ff6b35;--primary-dark:#e55a2b;--bg:#f7f7f7;--card:#fff;--text:#333;--muted:#999;--border:#eee}
+html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);overflow:hidden}
+body{display:flex;flex-direction:column;height:100dvh}
+
+.header{background:var(--primary);color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.header h1{font-size:18px;font-weight:600}
+.header .right{display:flex;gap:8px;align-items:center}
+.header button{background:rgba(255,255,255,.2);border:none;color:#fff;padding:6px 12px;border-radius:16px;font-size:13px;cursor:pointer}
+.header button.active{background:rgba(255,255,255,.4)}
+.status-dot{width:8px;height:8px;border-radius:50%;background:#4caf50;display:inline-block;margin-right:6px}
+.status-dot.offline{background:#f44336}
+
+.tabs{display:flex;background:#fff;border-bottom:1px solid var(--border);flex-shrink:0}
+.tabs button{flex:1;padding:12px;background:none;border:none;font-size:14px;color:var(--muted);cursor:pointer;position:relative}
+.tabs button.active{color:var(--primary);font-weight:600}
+.tabs button.active::after{content:"";position:absolute;bottom:0;left:30%;right:30%;height:2px;background:var(--primary);border-radius:2px}
+
+.content{flex:1;overflow-y:auto;padding-bottom:20px;-webkit-overflow-scrolling:touch}
+
+.categories{display:flex;gap:10px;padding:12px 16px;overflow-x:auto;background:#fff;border-bottom:1px solid var(--border);flex-shrink:0;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.categories::-webkit-scrollbar{display:none}
+.categories .cat{flex-shrink:0;padding:8px 16px;border-radius:20px;background:#f0f0f0;font-size:13px;color:#666;cursor:pointer;white-space:nowrap;transition:all .2s}
+.categories .cat.active{background:var(--primary);color:#fff}
+
+.dish-list{padding:12px 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
+.dish-card{background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06);position:relative;cursor:pointer;transition:transform .15s}
+.dish-card:active{transform:scale(.96)}
+.dish-card .img{width:100%;padding-top:100%;background:#f5f5f5;background-size:cover;background-position:center;position:relative}
+.dish-card .img .placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:12px}
+.dish-card .info{padding:10px}
+.dish-card .name{font-size:14px;font-weight:600;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dish-card .desc{font-size:11px;color:var(--muted);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.dish-card .price{font-size:14px;color:var(--primary);font-weight:600;margin-top:4px}
+
+.stepper{display:flex;align-items:center;gap:6px;margin-top:6px}
+.stepper button{width:24px;height:24px;border-radius:50%;border:none;font-size:16px;background:var(--primary);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
+.stepper button.minus{background:#ddd;color:#666}
+.stepper .num{font-size:14px;min-width:18px;text-align:center}
+
+.dish-card .del{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;background:rgba(244,67,54,.9);color:#fff;border:none;font-size:14px;cursor:pointer;display:none;align-items:center;justify-content:center;line-height:1}
+.admin-mode .dish-card .del{display:flex}
+
+.dish-card.add-dish{border:2px dashed var(--primary);background:rgba(255,107,53,.05);display:flex;align-items:center;justify-content:center;color:var(--primary);font-size:14px;min-height:180px}
+.dish-card.add-dish .plus{font-size:32px;font-weight:300}
+
+.cart-fab{position:fixed;bottom:80px;right:20px;width:56px;height:56px;border-radius:50%;background:var(--primary);color:#fff;border:none;font-size:24px;box-shadow:0 4px 16px rgba(255,107,53,.4);cursor:pointer;z-index:50;display:flex;align-items:center;justify-content:center}
+.cart-fab .badge{position:absolute;top:-4px;right:-4px;background:#f44336;color:#fff;border-radius:50%;min-width:20px;height:20px;font-size:11px;display:flex;align-items:center;justify-content:center;padding:0 5px;font-weight:600}
+
+.cart-bar{position:fixed;bottom:0;left:0;right:0;background:#fff;padding:12px 16px;display:none;align-items:center;justify-content:space-between;box-shadow:0 -2px 10px rgba(0,0,0,.08);z-index:40;flex-shrink:0}
+.cart-bar.show{display:flex}
+.cart-bar .cart-info{flex:1}
+.cart-bar .cart-info .count{font-size:13px;color:#666}
+.cart-bar .cart-info .total{font-size:18px;color:var(--primary);font-weight:700}
+.cart-bar button{background:var(--primary);color:#fff;border:none;padding:12px 28px;border-radius:24px;font-size:15px;font-weight:600;cursor:pointer}
+
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;display:none;align-items:flex-end;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal{background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:600px;max-height:90dvh;overflow-y:auto;animation:slideUp .25s ease}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.modal-header{padding:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.modal-header h3{font-size:16px}
+.modal-close{background:none;border:none;font-size:22px;color:#999;cursor:pointer}
+.modal-body{padding:16px}
+.modal-footer{padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:10px}
+.modal-footer button{flex:1;padding:12px;border:none;border-radius:8px;font-size:15px;cursor:pointer}
+.modal-footer .btn-primary{background:var(--primary);color:#fff}
+.modal-footer .btn-secondary{background:#f5f5f5;color:#666}
+
+.form-group{margin-bottom:14px}
+.form-group label{display:block;font-size:13px;color:#666;margin-bottom:6px}
+.form-group input,.form-group textarea,.form-group select{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff;outline:none;font-family:inherit}
+.form-group input:focus,.form-group textarea:focus,.form-group select:focus{border-color:var(--primary)}
+.form-group textarea{min-height:60px;resize:vertical}
+.upload-area{border:2px dashed #ddd;border-radius:8px;padding:20px;text-align:center;color:#999;cursor:pointer;position:relative;overflow:hidden}
+.upload-area:hover{border-color:var(--primary);color:var(--primary)}
+.upload-area input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.upload-area .preview{max-width:100%;max-height:150px;border-radius:6px}
+
+.order-list{padding:12px 16px}
+.order-card{background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.order-card .order-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.order-card .order-no{font-size:13px;color:var(--muted)}
+.order-card .order-status{font-size:12px;padding:3px 10px;border-radius:10px;background:#fff3e0;color:#ff9800}
+.order-card .order-status.done{background:#e8f5e9;color:#4caf50}
+.order-card .order-items{border-top:1px dashed var(--border);border-bottom:1px dashed var(--border);padding:10px 0;margin:8px 0}
+.order-card .order-item{display:flex;justify-content:space-between;padding:3px 0;font-size:14px}
+.order-card .order-foot{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:#666}
+.order-card .order-total{color:var(--primary);font-weight:700;font-size:16px}
+.order-card .order-note{background:#fff8e1;padding:8px;border-radius:6px;font-size:13px;color:#666;margin-top:8px}
+
+.empty{text-align:center;padding:60px 20px;color:var(--muted)}
+.empty .icon{font-size:48px;margin-bottom:12px}
+
+.bottom-nav{display:flex;background:#fff;border-top:1px solid var(--border);flex-shrink:0;height:60px}
+.bottom-nav button{flex:1;background:none;border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;color:var(--muted);cursor:pointer}
+.bottom-nav button.active{color:var(--primary)}
+.bottom-nav button .nav-icon{font-size:22px}
+
+.login-box{padding:24px}
+
+.cat-manage-item{display:flex;align-items:center;justify-content:space-between;padding:12px;background:#fff;border-radius:8px;margin-bottom:8px}
+.cat-manage-item button.del{background:#ffebee;color:#f44336;border:none;padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer}
+.cat-manage-item button.edit{background:#e3f2fd;color:#2196f3;border:none;padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer;margin-right:6px}
+
+.toast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.8);color:#fff;padding:10px 20px;border-radius:8px;font-size:14px;z-index:9999;pointer-events:none;animation:fadeOut 2s forwards}
+@keyframes fadeOut{0%{opacity:1}70%{opacity:1}100%{opacity:0}}
+
+.new-order-toast{position:fixed;top:70px;left:16px;right:16px;background:#4caf50;color:#fff;padding:12px 16px;border-radius:10px;z-index:200;box-shadow:0 4px 12px rgba(76,175,80,.4);cursor:pointer;animation:slideDown .3s ease}
+@keyframes slideDown{from{transform:translateY(-100px);opacity:0}to{transform:translateY(0);opacity:1}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1 id="pageTitle">家庭点餐</h1>
+  <div class="right">
+    <span class="status-dot" id="statusDot" title="连接状态"></span>
+    <button onclick="openBackendSettings()" title="后端地址">⚙️</button>
+    <button id="modeBtn">切换管理</button>
+  </div>
+</div>
+
+<div class="tabs" id="manageTabs" style="display:none">
+  <button class="active" data-tab="dishes">菜品管理</button>
+  <button data-tab="categories">分类管理</button>
+  <button data-tab="orders">订单管理</button>
+</div>
+
+<div class="content" id="mainContent">
+  <div id="orderView">
+    <div class="categories" id="catBar"></div>
+    <div class="dish-list" id="dishList"></div>
+  </div>
+  <div id="dishesView" style="display:none">
+    <div class="categories" id="catBar2"></div>
+    <div class="dish-list admin-mode" id="dishList2"></div>
+  </div>
+  <div id="categoriesView" style="display:none">
+    <div style="padding:16px">
+      <div class="form-group">
+        <label>添加新分类</label>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="newCatInput" placeholder="输入分类名称" onkeydown="if(event.key==='Enter')addCategory()">
+          <button onclick="addCategory()" style="padding:10px 16px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:14px">添加</button>
+        </div>
+      </div>
+      <div id="catManageList"></div>
+    </div>
+  </div>
+  <div id="ordersView" style="display:none">
+    <div class="order-list" id="orderList"></div>
+  </div>
+</div>
+
+<div class="bottom-nav" id="bottomNav">
+  <button class="active" onclick="switchOrderTab('menu',this)"><span class="nav-icon">🍽️</span>菜单</button>
+  <button onclick="switchOrderTab('my',this)"><span class="nav-icon">📋</span>我的订单</button>
+</div>
+
+<button class="cart-fab" id="cartFab" style="display:none" onclick="showCart()">🛒<span class="badge" id="cartBadge">0</span></button>
+
+<div class="cart-bar" id="cartBar">
+  <div class="cart-info">
+    <div class="count" id="cartCount">0 份</div>
+    <div class="total">¥<span id="cartTotal">0</span></div>
+  </div>
+  <button onclick="showNoteModal()">去下单</button>
+</div>
+
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">标题</h3>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-footer" id="modalFooter" style="display:none"></div>
+  </div>
+</div>
+
+<!-- Socket.IO 客户端 CDN（本地/云端通用） -->
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+/* ================================================================
+   后端地址配置
+   默认同源（window.location.origin），可通过 ⚙️ 按钮手动指定云端地址
+   ================================================================ */
+const API_BASE = (function(){
+  const saved = localStorage.getItem('backend_url');
+  if(saved) return saved.replace(/\/$/, '');   // 去尾部斜杠
+  // 如果前端是通过 file:// 打开的（离线 PWA），同源就是无效的，默认给个空让用户自己配
+  return location.protocol === 'file:' ? '' : location.origin;
+})();
+
+async function apiFetch(path, options){
+  if(!API_BASE){ alert('请先点右上角 ⚙️ 配置后端地址'); throw new Error('no backend'); }
+  const url = API_BASE + path;
+  const res = await fetch(url, options);
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error || `请求失败 (${res.status})`);
+  return data;
+}
+const API = {
+  all:        ()                     => apiFetch('/api/all'),
+  dish:       (data)                 => apiFetch('/api/dish',  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}),
+  delDish:    (id)                   => apiFetch('/api/dish/'+id, {method:'DELETE'}),
+  category:   (data)                 => apiFetch('/api/category', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}),
+  delCategory:(i)                    => apiFetch('/api/category/'+i, {method:'DELETE'}),
+  order:      (data)                 => apiFetch('/api/order', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}),
+  orderStatus:(id,status)            => apiFetch('/api/order/'+id+'/status', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})}),
+  delOrder:   (id)                   => apiFetch('/api/order/'+id, {method:'DELETE'}),
+  upload:     (file)                 => { const fd = new FormData(); fd.append('file',file); return apiFetch('/api/upload',{method:'POST',body:fd}); },
+  login:      (pwd,newPwd)           => apiFetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pwd,newPwd})})
+};
+
+/* 状态 */
+let DB = { categories: [], dishes: [], orders: [], adminPwd: '123456' };
+let state = {
+  mode: 'order',
+  tab: 'menu',
+  manageTab: 'dishes',
+  activeCat: '',
+  cart: {},
+  lastOrderCount: 0
+};
+let editingDishId = null;
+let uploadBuffer = null;
+
+/* 加载全量数据 */
+async function loadDB(){
+  if(!API_BASE){
+    document.getElementById('statusDot').classList.add('offline');
+    document.getElementById('statusDot').title = '未配置后端';
+    document.getElementById('catBar').innerHTML = '';
+    document.getElementById('dishList').innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="icon">⚙️</div><div>请点右上角按钮配置后端地址</div></div>`;
+    return;
+  }
+  try {
+    DB = await API.all();
+    document.getElementById('statusDot').classList.remove('offline');
+    document.getElementById('statusDot').title = '已连接';
+    if(!state.activeCat || !DB.categories.includes(state.activeCat)){
+      state.activeCat = DB.categories[0] || '';
+    }
+  } catch(e){
+    document.getElementById('statusDot').classList.add('offline');
+    document.getElementById('statusDot').title = '连接失败: '+e.message;
+    console.warn('loadDB failed:', e.message);
+  }
+}
+
+/* Socket.IO 连接（指向可配置的后端地址） */
+let socket = null;
+function connectSocket(){
+  if(!API_BASE) return;
+  try {
+    socket = io(API_BASE, { transports: ['websocket','polling'], reconnection: true, reconnectionDelay: 1000 });
+    socket.on('connect', () => {
+      const dot = document.getElementById('statusDot');
+      dot.classList.remove('offline');
+      dot.title = '已连接';
+      console.log('[ws] connected →', API_BASE);
+    });
+    socket.on('disconnect', () => {
+      const dot = document.getElementById('statusDot');
+      dot.classList.add('offline');
+      dot.title = '离线中，尝试重连...';
+      console.log('[ws] disconnected');
+    });
+    socket.on('connect_error', (e) => {
+      console.warn('[ws] connect_error:', e.message);
+    });
+    socket.on('dataChanged', async (payload) => {
+      console.log('[ws] dataChanged:', payload.info);
+      await loadDB();
+      render();
+      if(state.mode==='admin' && DB.orders.length > state.lastOrderCount){
+        const diff = DB.orders.length - state.lastOrderCount;
+        showNewOrderToast(diff);
+      }
+      state.lastOrderCount = DB.orders.length;
+    });
+  } catch(e){
+    console.warn('socket init failed:', e);
+  }
+}
+
+function showNewOrderToast(n){
+  const old = document.querySelector('.new-order-toast');
+  if(old) old.remove();
+  const el = document.createElement('div');
+  el.className = 'new-order-toast';
+  el.textContent = `🔔 有 ${n} 笔新订单！快去看看~`;
+  el.onclick = () => {
+    document.querySelector('#manageTabs button[data-tab="orders"]').click();
+    el.remove();
+  };
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(), 5000);
+}
+
+/* ================================================================
+   渲染
+   ================================================================ */
+function render(){
+  document.getElementById('modeBtn').textContent = state.mode==='admin' ? '退出管理' : '切换管理';
+  document.getElementById('manageTabs').style.display = state.mode==='admin' ? 'flex' : 'none';
+  document.getElementById('bottomNav').style.display = state.mode==='admin' ? 'none' : 'flex';
+
+  document.getElementById('dishesView').style.display = state.mode==='admin' && state.manageTab==='dishes' ? 'block' : 'none';
+  document.getElementById('categoriesView').style.display = state.mode==='admin' && state.manageTab==='categories' ? 'block' : 'none';
+  document.getElementById('ordersView').style.display = state.mode==='admin' && state.manageTab==='orders' ? 'block' : 'none';
+  document.getElementById('orderView').style.display = state.mode==='order' ? 'block' : 'none';
+
+  renderCats();
+  renderDishes();
+  renderCart();
+  if(state.mode==='admin'){
+    if(state.manageTab==='categories') renderCatManage();
+    if(state.manageTab==='orders') renderOrders();
+  } else {
+    if(state.tab==='my') renderMyOrders();
+  }
+  updatePageTitle();
+}
+
+function updatePageTitle(){
+  const t = document.getElementById('pageTitle');
+  if(state.mode==='admin'){
+    const map = {dishes:'菜品管理',categories:'分类管理',orders:'订单管理'};
+    t.textContent = '管理后台 - '+map[state.manageTab];
+  } else {
+    t.textContent = state.tab==='menu' ? '家庭点餐' : '我的订单';
+  }
+}
+
+function renderCats(){
+  const cats = DB.categories;
+  if(!cats.includes(state.activeCat)) state.activeCat = cats[0]||'';
+  const html = cats.map(c=>`<div class="cat ${c===state.activeCat?'active':''}" onclick="selectCat('${c}')">${c}</div>`).join('');
+  document.getElementById('catBar').innerHTML = html;
+  document.getElementById('catBar2').innerHTML = html;
+}
+
+function selectCat(c){ state.activeCat = c; renderCats(); renderDishes(); }
+
+function renderDishes(){
+  const listId = state.mode==='admin' ? 'dishList2' : 'dishList';
+  const list = document.getElementById(listId);
+  const dishes = DB.dishes.filter(d=>d.category===state.activeCat);
+
+  let html = dishes.map(d=>{
+    const qty = state.cart[d.id]||0;
+    const imgHtml = d.image
+      ? `<div class="img" style="background-image:url(${d.image.startsWith('http')?d.image:d.image})"></div>`
+      : `<div class="img"><div class="placeholder">无图片</div></div>`;
+    const stepperHtml = state.mode==='order' ? `
+      <div class="stepper">
+        <button class="minus" onclick="event.stopPropagation();decCart('${d.id}')">−</button>
+        <span class="num">${qty}</span>
+        <button onclick="event.stopPropagation();incCart('${d.id}')">+</button>
+      </div>` : '';
+    const delHtml = state.mode==='admin' ? `<button class="del" onclick="event.stopPropagation();deleteDish('${d.id}')">×</button>` : '';
+    return `
+      <div class="dish-card" onclick="${state.mode==='admin'?`editDish('${d.id}')`:`showDishDetail('${d.id}')`}">
+        ${delHtml}
+        ${imgHtml}
+        <div class="info">
+          <div class="name">${d.name}</div>
+          ${d.desc?`<div class="desc">${d.desc}</div>`:''}
+          ${d.price?`<div class="price">¥${d.price}</div>`:''}
+          ${stepperHtml}
+        </div>
+      </div>`;
+  }).join('');
+
+  if(state.mode==='admin'){
+    html += `<div class="dish-card add-dish" onclick="openAddDish()"><div style="text-align:center"><div class="plus">+</div><div>添加菜品</div></div></div>`;
+  }
+  list.innerHTML = html || `<div class="empty" style="grid-column:1/-1"><div class="icon">🍽️</div><div>暂无菜品</div></div>`;
+}
+
+function renderCatManage(){
+  const box = document.getElementById('catManageList');
+  if(!DB.categories.length){ box.innerHTML = ''; return; }
+  box.innerHTML = DB.categories.map((c,i)=>`
+    <div class="cat-manage-item">
+      <span>${c}</span>
+      <div>
+        <button class="edit" onclick="editCategoryName(${i})">改名</button>
+        <button class="del" onclick="deleteCategory(${i})">删除</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderOrders(){
+  const list = document.getElementById('orderList');
+  if(!DB.orders.length){ list.innerHTML = `<div class="empty"><div class="icon">📋</div><div>暂无订单</div></div>`; return; }
+  const sorted = [...DB.orders].reverse();
+  list.innerHTML = sorted.map(o=>{
+    const itemsHtml = o.items.map(it=>`<div class="order-item"><span>${it.name} ×${it.qty}</span></div>`).join('');
+    const statusClass = o.status==='done' ? 'done' : '';
+    const statusText = o.status==='done' ? '已完成' : '待处理';
+    return `
+      <div class="order-card">
+        <div class="order-head">
+          <span class="order-no">#${o.id}</span>
+          <span class="order-status ${statusClass}">${statusText}</span>
+        </div>
+        <div style="font-size:12px;color:#999;margin-bottom:6px">下单时间：${new Date(o.time).toLocaleString()}</div>
+        <div class="order-items">${itemsHtml}</div>
+        ${o.note?`<div class="order-note">📝 备注：${o.note}</div>`:''}
+        <div class="order-foot">
+          <span>共 ${o.items.reduce((s,it)=>s+it.qty,0)} 份</span>
+          <span class="order-total">¥${o.total}</span>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button onclick="toggleOrderStatus('${o.id}')" style="flex:1;padding:8px;background:${o.status==='done'?'#fff3e0':'#e8f5e9'};color:${o.status==='done'?'#ff9800':'#4caf50'};border:none;border-radius:6px;font-size:13px;cursor:pointer">${o.status==='done'?'标为待处理':'标为已完成'}</button>
+          <button onclick="deleteOrder('${o.id}')" style="padding:8px 16px;background:#ffebee;color:#f44336;border:none;border-radius:6px;font-size:13px;cursor:pointer">删除</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderMyOrders(){
+  const list = document.getElementById('orderList');
+  if(!DB.orders.length){ list.innerHTML = `<div class="empty"><div class="icon">📋</div><div>还没有订单</div></div>`; return; }
+  const sorted = [...DB.orders].reverse();
+  list.innerHTML = sorted.map(o=>{
+    const itemsHtml = o.items.map(it=>`<div class="order-item"><span>${it.name} ×${it.qty}</span></div>`).join('');
+    const statusClass = o.status==='done' ? 'done' : '';
+    const statusText = o.status==='done' ? '厨师正在做🍳' : '等待接单⏳';
+    return `
+      <div class="order-card">
+        <div class="order-head">
+          <span class="order-no">#${o.id}</span>
+          <span class="order-status ${statusClass}">${statusText}</span>
+        </div>
+        <div style="font-size:12px;color:#999;margin-bottom:6px">下单时间：${new Date(o.time).toLocaleString()}</div>
+        <div class="order-items">${itemsHtml}</div>
+        ${o.note?`<div class="order-note">📝 ${o.note}</div>`:''}
+        <div class="order-foot">
+          <span>共 ${o.items.reduce((s,it)=>s+it.qty,0)} 份</span>
+          <span class="order-total">¥${o.total}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+/* ================================================================
+   购物车
+   ================================================================ */
+function incCart(id){ state.cart[id]=(state.cart[id]||0)+1; renderDishes(); renderCart(); }
+function decCart(id){
+  if(!state.cart[id]) return;
+  state.cart[id]--;
+  if(state.cart[id]<=0) delete state.cart[id];
+  renderDishes(); renderCart();
+}
+function renderCart(){
+  const ids = Object.keys(state.cart);
+  if(!ids.length){
+    document.getElementById('cartFab').style.display = 'none';
+    document.getElementById('cartBar').classList.remove('show');
+    return;
+  }
+  document.getElementById('cartFab').style.display = 'flex';
+  const count = ids.reduce((s,id)=>s+state.cart[id],0);
+  const total = ids.reduce((s,id)=>{
+    const d = DB.dishes.find(x=>x.id===id);
+    return s + (d? (d.price||0)*state.cart[id] : 0);
+  },0);
+  document.getElementById('cartBadge').textContent = count;
+  document.getElementById('cartCount').textContent = count+' 份';
+  document.getElementById('cartTotal').textContent = total.toFixed(1);
+  document.getElementById('cartBar').classList.add('show');
+}
+
+function showCart(){
+  if(!Object.keys(state.cart).length) return;
+  const ids = Object.keys(state.cart);
+  let itemsHtml = ids.map(id=>{
+    const d = DB.dishes.find(x=>x.id===id);
+    const qty = state.cart[id];
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f5f5f5">
+      <span>${d?d.name:'已删除'}</span>
+      <div class="stepper">
+        <button class="minus" onclick="decCart('${id}')">−</button>
+        <span class="num">${qty}</span>
+        <button onclick="incCart('${id}')">+</button>
+      </div>
+    </div>`;
+  }).join('');
+  openModal('🛒 购物车', itemsHtml, `
+    <button class="btn-secondary" onclick="state.cart={};render();closeModal()">清空</button>
+    <button class="btn-primary" onclick="closeModal();showNoteModal()">去下单</button>
+  `);
+}
+
+function showNoteModal(){
+  openModal('填写备注', `
+    <div class="form-group">
+      <label>给厨师说点什么（可选）</label>
+      <textarea id="orderNote" placeholder="如：不要辣、少放盐、葱花多点..."></textarea>
+    </div>
+  `, `
+    <button class="btn-secondary" onclick="closeModal()">取消</button>
+    <button class="btn-primary" onclick="submitOrder()">确认下单</button>
+  `);
+}
+
+async function submitOrder(){
+  const ids = Object.keys(state.cart);
+  if(!ids.length){ alert('请先选择菜品'); return; }
+  const items = ids.map(id=>{
+    const d = DB.dishes.find(x=>x.id===id);
+    return { dishId:id, name:d?d.name:'未知', price:d?(d.price||0):0, qty:state.cart[id] };
+  });
+  const total = items.reduce((s,it)=>s+it.price*it.qty,0);
+  const note = document.getElementById('orderNote')?.value || '';
+  try {
+    await API.order({ items, note, total });
+    state.cart = {};
+    closeModal();
+    render();
+    toast('✅ 下单成功！等待厨师接单~');
+  } catch(e){ alert('下单失败: '+e.message); }
+}
+
+/* ================================================================
+   菜品管理
+   ================================================================ */
+function openAddDish(){ editingDishId = null; uploadBuffer = null; openDishForm(); }
+function editDish(id){ editingDishId = id; uploadBuffer = DB.dishes.find(x=>x.id===id)?.image || null; openDishForm(); }
+
+function openDishForm(){
+  const d = editingDishId ? DB.dishes.find(x=>x.id===editingDishId) : null;
+  openModal(d?'编辑菜品':'添加菜品', `
+    <div class="form-group">
+      <label>菜品图片</label>
+      <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+        <input type="file" id="fileInput" accept="image/*" onchange="handleImage(event)">
+        ${uploadBuffer?`<img class="preview" src="${uploadBuffer}"><div style="margin-top:6px;font-size:12px">点击更换</div>`:`<div>📷 点击上传图片</div>`}
+      </div>
+    </div>
+    <div class="form-group">
+      <label>菜品名称 *</label>
+      <input type="text" id="dishName" value="${d?d.name:''}" placeholder="如：番茄炒蛋">
+    </div>
+    <div class="form-group">
+      <label>所属分类 *</label>
+      <select id="dishCat">${DB.categories.map(c=>`<option ${d&&d.category===c?'selected':''}>${c}</option>`).join('')}</select>
+    </div>
+    <div class="form-group">
+      <label>简介描述</label>
+      <input type="text" id="dishDesc" value="${d?(d.desc||''):''}" placeholder="如：酸甜可口，下饭神器">
+    </div>
+    <div class="form-group">
+      <label>价格（家庭记账用，可留空）</label>
+      <input type="number" id="dishPrice" step="0.1" value="${d?(d.price||''):''}" placeholder="如：15">
+    </div>
+    <div class="form-group">
+      <label>做法/食谱</label>
+      <textarea id="dishRecipe" placeholder="写一下这道菜的做法，方便查看...">${d?(d.recipe||''):''}</textarea>
+    </div>
+  `, `
+    <button class="btn-secondary" onclick="closeModal()">取消</button>
+    <button class="btn-primary" onclick="saveDish()">保存</button>
+  `);
+}
+
+async function handleImage(e){
+  const f = e.target.files[0];
+  if(!f) return;
+  try {
+    toast('上传中...');
+    const res = await API.upload(f);
+    uploadBuffer = res.url;
+    const area = document.getElementById('uploadArea');
+    area.innerHTML = `<img class="preview" src="${res.url}"><div style="margin-top:6px;font-size:12px">点击更换</div>
+      <input type="file" id="fileInput" accept="image/*" onchange="handleImage(event)" style="position:absolute;inset:0;opacity:0;cursor:pointer">`;
+  } catch(err){ alert('上传失败: '+err.message); }
+}
+
+async function saveDish(){
+  const name = document.getElementById('dishName').value.trim();
+  const cat = document.getElementById('dishCat').value;
+  if(!name){ alert('请输入菜品名称'); return; }
+  const data = {
+    id: editingDishId || undefined,
+    name, category: cat,
+    desc: document.getElementById('dishDesc').value.trim(),
+    price: parseFloat(document.getElementById('dishPrice').value)||0,
+    recipe: document.getElementById('dishRecipe').value.trim(),
+    image: uploadBuffer || null
+  };
+  try {
+    await API.dish(data);
+    closeModal();
+    toast('💾 已保存');
+  } catch(e){ alert('保存失败: '+e.message); }
+}
+
+async function deleteDish(id){
+  if(!confirm('确定删除这道菜吗？')) return;
+  try { await API.delDish(id); toast('已删除'); } catch(e){ alert(e.message); }
+}
+
+function showDishDetail(id){
+  const d = DB.dishes.find(x=>x.id===id);
+  if(!d) return;
+  const imgHtml = d.image ? `<img src="${d.image}" style="width:100%;border-radius:8px;margin-bottom:12px">` : '';
+  let html = imgHtml + `<div style="font-size:18px;font-weight:700;margin-bottom:6px">${d.name}</div>`;
+  if(d.desc) html += `<div style="color:#666;margin-bottom:8px">${d.desc}</div>`;
+  if(d.price) html += `<div style="color:var(--primary);font-weight:600;margin-bottom:12px">¥${d.price}</div>`;
+  if(d.recipe) html += `<div style="background:#f9f9f9;padding:12px;border-radius:8px;font-size:13px;line-height:1.8;white-space:pre-wrap;margin-top:10px"><b>📖 做法：</b>\n${d.recipe}</div>`;
+  openModal(d.name, html, `<button class="btn-secondary" onclick="closeModal()">关闭</button>`);
+}
+
+/* ================================================================
+   分类管理
+   ================================================================ */
+async function addCategory(){
+  const input = document.getElementById('newCatInput');
+  const v = input.value.trim();
+  if(!v){ alert('请输入分类名'); return; }
+  try {
+    await API.category({ name: v });
+    input.value='';
+  } catch(e){ alert(e.message); }
+}
+async function editCategoryName(i){
+  const old = DB.categories[i];
+  const v = prompt('输入新名称', old);
+  if(!v||v===old) return;
+  try { await API.category({ name: v, oldName: old }); } catch(e){ alert(e.message); }
+}
+async function deleteCategory(i){
+  const c = DB.categories[i];
+  const dishCount = DB.dishes.filter(d=>d.category===c).length;
+  if(dishCount){ alert(`该分类下有 ${dishCount} 道菜，请先删除或移动菜品`); return; }
+  if(!confirm(`确定删除分类「${c}」？`)) return;
+  try { await API.delCategory(i); } catch(e){ alert(e.message); }
+}
+
+/* ================================================================
+   订单管理
+   ================================================================ */
+async function toggleOrderStatus(id){
+  const o = DB.orders.find(x=>x.id===id);
+  try { await API.orderStatus(id, o.status==='done'?'pending':'done'); } catch(e){ alert(e.message); }
+}
+async function deleteOrder(id){
+  if(!confirm('删除此订单？')) return;
+  try { await API.delOrder(id); } catch(e){ alert(e.message); }
+}
+
+/* ================================================================
+   模式切换 + 登录
+   ================================================================ */
+document.getElementById('modeBtn').onclick = ()=>{
+  if(state.mode==='admin'){ state.mode='order'; render(); }
+  else { openLogin(); }
+};
+
+function openLogin(){
+  openModal('🔐 管理员登录', `
+    <div class="login-box">
+      <div class="form-group">
+        <input type="password" id="adminPwd" placeholder="请输入管理员密码">
+      </div>
+      <div class="form-group">
+        <label>修改密码（留空则不修改）</label>
+        <input type="password" id="newPwd" placeholder="新密码">
+      </div>
+    </div>
+  `, `
+    <button class="btn-secondary" onclick="closeModal()">取消</button>
+    <button class="btn-primary" onclick="doLogin()">进入管理</button>
+  `);
+}
+async function doLogin(){
+  const pwd = document.getElementById('adminPwd').value;
+  const newPwd = document.getElementById('newPwd').value;
+  try {
+    await API.login(pwd, newPwd);
+    state.mode = 'admin';
+    state.lastOrderCount = DB.orders.length;
+    closeModal();
+    render();
+    toast('欢迎回来 👨‍🍳');
+  } catch(e){ alert(e.message || '登录失败'); }
+}
+
+/* ================================================================
+   点餐底部 tab 切换
+   ================================================================ */
+function switchOrderTab(tab, btn){
+  state.tab = tab;
+  document.querySelectorAll('#bottomNav button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  if(tab==='menu'){
+    document.getElementById('orderView').style.display='block';
+    document.getElementById('cartFab').style.display = Object.keys(state.cart).length ? 'flex' : 'none';
+    document.getElementById('cartBar').classList.add('show');
+    renderDishes();
+  } else {
+    document.getElementById('orderView').style.display='none';
+    document.getElementById('cartFab').style.display='none';
+    document.getElementById('cartBar').classList.remove('show');
+    renderMyOrders();
+  }
+  updatePageTitle();
+}
+
+/* ================================================================
+   管理 Tab 切换
+   ================================================================ */
+document.querySelectorAll('#manageTabs button').forEach(btn=>{
+  btn.onclick = ()=>{
+    document.querySelectorAll('#manageTabs button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.manageTab = btn.dataset.tab;
+    render();
+  };
+});
+
+/* ================================================================
+   Modal / Toast 通用
+   ================================================================ */
+function openModal(title, bodyHtml, footerHtml){
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').innerHTML = bodyHtml;
+  document.getElementById('modalFooter').innerHTML = footerHtml || '';
+  document.getElementById('modalFooter').style.display = footerHtml ? 'flex' : 'none';
+  document.getElementById('modal').classList.add('show');
+}
+function closeModal(){ document.getElementById('modal').classList.remove('show'); }
+document.getElementById('modal').addEventListener('click', e=>{ if(e.target.id==='modal') closeModal(); });
+
+function toast(msg){
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 2000);
+}
+
+/* ================================================================
+   ⚙️ 后端地址设置
+   ================================================================ */
+function openBackendSettings(){
+  openModal('⚙️ 后端地址设置', `
+    <div class="form-group">
+      <label>后端地址（以 http:// 或 https:// 开头，末尾不要 /）</label>
+      <input type="text" id="beUrl" placeholder="如 https://family-order.glitch.me" value="${API_BASE}">
+      <div style="font-size:12px;color:#999;margin-top:6px">
+        本机后端: http://localhost:3000<br>
+        局域网:   http://192.168.x.x:3000<br>
+        云端(Glitch): 部署后把网址粘进来
+      </div>
+    </div>
+    <div class="form-group">
+      <label>快捷选择</label>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <button onclick="document.getElementById('beUrl').value=location.protocol+'//'+location.host" style="padding:6px 12px;border-radius:16px;border:1px solid #ddd;background:#f5f5f5;font-size:12px;cursor:pointer">🖥️ 当前同源</button>
+        <button onclick="document.getElementById('beUrl').value='http://localhost:3000'" style="padding:6px 12px;border-radius:16px;border:1px solid #ddd;background:#f5f5f5;font-size:12px;cursor:pointer">💻 localhost</button>
+      </div>
+    </div>
+  `, `
+    <button class="btn-secondary" onclick="localStorage.removeItem('backend_url');closeModal();toast('已清空，下次打开重新读取同源地址')">清除</button>
+    <button class="btn-primary" onclick="saveBackend()">保存并重连</button>
+  `);
+}
+function saveBackend(){
+  const v = document.getElementById('beUrl').value.trim().replace(/\/$/, '');
+  if(!v){ alert('请输入有效地址'); return; }
+  localStorage.setItem('backend_url', v);
+  closeModal();
+  toast('✅ 已保存，刷新生效');
+  setTimeout(()=>location.reload(), 800);
+}
+
+/* ================================================================
+   启动
+   ================================================================ */
+// Service Worker 注册（PWA 缓存）
+if('serviceWorker' in navigator && location.protocol !== 'file:'){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./service-worker.js').catch(e => console.warn('SW 注册失败:', e.message));
+  });
+}
+
+(async function init(){
+  await loadDB();
+  connectSocket();
+  state.activeCat = DB.categories[0] || '';
+  state.lastOrderCount = DB.orders.length;
+  render();
+})();
+</script>
+</body>
+</html>
