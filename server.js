@@ -17,11 +17,16 @@ const server = http.createServer(app);
 const io     = socketIo(server, { cors: { origin: '*' } });
 
 const PORT       = process.env.PORT || 3000;
-const DATA_FILE  = path.join(__dirname, 'data.json');
+// 持久化数据目录：本地用项目根目录，Railway 用挂载的 /app/data 持久化磁盘
+const DATA_DIR   = process.env.DATA_DIR || (fs.existsSync('/app/data') ? '/app/data' : __dirname);
+const DATA_FILE  = path.join(DATA_DIR, 'data.json');
 const GH_TOKEN   = process.env.GITHUB_TOKEN || '';   // Render 环境变量（可不设）
 const GIST_ID    = process.env.GIST_ID || '';        // Render 环境变量（可不设）
 const GIST_URL   = 'https://api.github.com/gists/' + GIST_ID;
 const GIST_ENABLED = !!(GH_TOKEN && GIST_ID);
+
+// 确保数据目录存在
+if(!fs.existsSync(DATA_DIR)){ try { fs.mkdirSync(DATA_DIR, { recursive: true }); console.log('[data] 已创建目录:', DATA_DIR); } catch(e){ console.warn('[data] 创建目录失败:', e.message); } }
 
 // ---- 初始化数据 ----
 const DEFAULT_CATEGORIES = ['蔬菜','凉拌菜','腌制','羹汤','荤菜','小炒','饮料','其他'];
