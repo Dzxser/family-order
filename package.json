@@ -1,10 +1,14 @@
 {
   "name": "family-order",
-  "version": "2.0.0",
-  "description": "家庭点餐小应用 - Vercel + Supabase 免费云方案",
+  "version": "1.0.0",
+  "description": "家庭点餐小应用 - 支持多端实时同步",
+  "main": "server.js",
   "scripts": {
-    "dev": "npx vercel dev",
-    "deploy": "npx vercel --prod"
+    "start": "node server.js"
   },
-  "dependencies": {}
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5",
+    "multer": "^1.4.5-lts.1"
+  }
 }
