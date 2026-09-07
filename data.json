@@ -9,7 +9,17 @@
     "饮料",
     "其他"
   ],
-  "dishes": [],
+  "dishes": [
+    {
+      "id": "mtraqd06",
+      "name": "番茄炒蛋",
+      "category": "蔬菜",
+      "desc": "",
+      "price": 0,
+      "recipe": "",
+      "image": null
+    }
+  ],
   "orders": [],
   "adminPwd": "123456"
 }
