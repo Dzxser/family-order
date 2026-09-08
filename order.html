@@ -50,8 +50,10 @@ body{display:flex;flex-direction:column;height:100dvh}
 .stepper button.minus{background:#ddd;color:#666}
 .stepper .num{font-size:14px;min-width:18px;text-align:center}
 
-.dish-card .del{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;background:rgba(244,67,54,.9);color:#fff;border:none;font-size:14px;cursor:pointer;display:none;align-items:center;justify-content:center;line-height:1}
+.dish-card .del{position:absolute;top:8px;right:8px;width:32px;height:32px;border-radius:50%;background:#f44336;color:#fff;border:none;font-size:18px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;box-shadow:0 2px 6px rgba(244,67,54,.5);z-index:5}
 .admin-mode .dish-card .del{display:flex}
+.dish-card .edit{position:absolute;top:8px;left:8px;width:32px;height:32px;border-radius:50%;background:#2196f3;color:#fff;border:none;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;box-shadow:0 2px 6px rgba(33,150,243,.5);z-index:5}
+.admin-mode .dish-card .edit{display:flex}
 
 .dish-card.add-dish{border:2px dashed var(--primary);background:rgba(255,107,53,.05);display:flex;align-items:center;justify-content:center;color:var(--primary);font-size:14px;min-height:180px}
 .dish-card.add-dish .plus{font-size:32px;font-weight:300}
@@ -373,7 +375,7 @@ function renderDishes(){
         <span class="num">${qty}</span>
         <button onclick="event.stopPropagation();incCart('${d.id}')">+</button>
       </div>` : '';
-    const delHtml = state.mode==='admin' ? `<button class="del" onclick="event.stopPropagation();deleteDish('${d.id}')">×</button>` : '';
+    const delHtml = state.mode==='admin' ? `<button class="del" onclick="event.stopPropagation();deleteDish('${d.id}')" title="删除菜品">×</button><button class="edit" onclick="event.stopPropagation();editDish('${d.id}')" title="编辑菜品">✎</button>` : '';
     return `
       <div class="dish-card" onclick="${state.mode==='admin'?`editDish('${d.id}')`:`showDishDetail('${d.id}')`}">
         ${delHtml}
