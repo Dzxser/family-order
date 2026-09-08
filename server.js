@@ -97,6 +97,26 @@ async function pushToGitHub(db){
   } catch(e){ console.warn('[gh] 推送异常:', e.message); cachedSha = null; }
 }
 
+// 从 GitHub Repo 拉静态文件（order.html / service-worker.js / manifest.json）
+async function syncStaticFromGitHub(){
+  if(!GH_ENABLED) return;
+  const files = ['order.html', 'service-worker.js', 'manifest.json'];
+  for(const name of files){
+    try {
+      const r = await fetch(`${GH_API_URL.replace('data.json', name)}`, {
+        headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json' }
+      });
+      if(!r.ok) continue;
+      const f = await r.json();
+      if(f.content){
+        const content = Buffer.from(f.content.replace(/\n/g,''), 'base64');
+        fs.writeFileSync(path.join(__dirname, name), content);
+        console.log(`[static] ✅ ${name} 已从 GitHub 同步`);
+      }
+    } catch(e){ /* 忽略静态文件同步失败 */ }
+  }
+}
+
 // 启动时：先拉 GitHub → 有就用，没有用本地，没有本地就 fresh
 let DB;
 async function initDB(){
@@ -263,7 +283,7 @@ io.on('connection', (socket) => {
 });
 
 // ---- 启动 ----
-initDB().then(() => {
+Promise.all([initDB(), syncStaticFromGitHub()]).then(() => {
   server.listen(PORT, '0.0.0.0', () => {
     console.log('====================================');
     console.log(' 家庭点餐服务已启动');
