@@ -1,5 +1,5 @@
 /* Service Worker — 缓存核心静态资源 + 离线访问 */
-const CACHE_NAME = 'family-order-v2';
+const CACHE_NAME = 'family-order-v3';
 const STATIC = [
   './',
   './order.html',
