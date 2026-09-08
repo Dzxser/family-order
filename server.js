@@ -156,7 +156,25 @@ function saveDB(){
 
 // ---- 中间件 ----
 app.use(express.json({ limit: '10mb' }));
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'order.html')));
+
+// 拦截 order.html 请求，从 GitHub 实时拉最新版本（绕过 Railway 构建缓存）
+async function fetchFileFromGitHub(name){
+  if(!GH_ENABLED) return null;
+  try {
+    const r = await fetch(GH_API_URL.replace('data.json', name), {
+      headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json' }
+    });
+    if(!r.ok) return null;
+    const f = await r.json();
+    if(!f.content) return null;
+    return Buffer.from(f.content.replace(/\n/g,''), 'base64').toString('utf-8');
+  } catch(e){ return null; }
+}
+app.get('/', async (req, res) => {
+  const content = await fetchFileFromGitHub('order.html');
+  if(content){ res.setHeader('Content-Type','text/html; charset=utf-8'); res.send(content); return; }
+  res.sendFile(path.join(__dirname, 'order.html'));
+});
 app.use(express.static(__dirname));
 
 // ---- 上传（内存 → base64 data URL → 存进 data.json）----
