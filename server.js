@@ -119,13 +119,17 @@ async function initDB(){
   console.log('[data] ✅ 新建 data.json');
   DB = freshDB();
   saveLocalDB(DB);
-  if(GH_ENABLED) pushToGitHub(DB);  // 首次也推上去
+  if(GH_ENABLED) setTimeout(() => pushToGitHub(DB), 60000);  // 启动 60 秒后再推，避免触发 Redeploy 循环
 }
 
-// 统一保存：本地同步写，GitHub 异步推
+// 统一保存：本地同步写，GitHub 节流推（30秒内无新改动才推，防止无限 Redeploy 循环）
+let ghPushTimer = null;
 function saveDB(){
   saveLocalDB(DB);
-  if(GH_ENABLED) pushToGitHub(DB);
+  if(GH_ENABLED){
+    if(ghPushTimer) clearTimeout(ghPushTimer);
+    ghPushTimer = setTimeout(() => { ghPushTimer = null; pushToGitHub(DB); }, 30000);
+  }
 }
 
 // ---- 中间件 ----
