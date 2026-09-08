@@ -585,41 +585,68 @@ function openDishForm(){
 
 async function handleImage(e){
   const f = e.target.files[0];
-  if(!f) return;
+  if(!f){ toast('未选择文件'); return; }
   try {
     toast('处理图片中...');
-    // 客户端压缩：用 canvas 缩小到最大 800px，转 JPEG 0.8 质量
-    const compressed = await compressImage(f, 800, 0.8);
-    uploadBuffer = compressed; // 直接存 base64 data URL，不走后端上传
+    console.log('[upload] 文件名:', f.name, '大小:', (f.size/1024).toFixed(1)+'KB', '类型:', f.type);
+    let dataUrl;
+    try {
+      // 优先尝试 canvas 压缩（体积小、兼容最好）
+      dataUrl = await compressImage(f, 800, 0.85);
+      console.log('[upload] canvas 压缩成功');
+    } catch(err){
+      console.warn('[upload] canvas 压缩失败，降级为原始 base64:', err.message);
+      // 降级：直接 FileReader 转 base64（HEIC 等 canvas 不识别的格式）
+      dataUrl = await fileToDataURL(f);
+      console.log('[upload] 原始 base64 降级成功');
+    }
+    uploadBuffer = dataUrl;
     const area = document.getElementById('uploadArea');
-    area.innerHTML = `<img class="preview" src="${compressed}"><div style="margin-top:6px;font-size:12px">✅ 已添加，点击更换</div>
+    area.innerHTML = `<img class="preview" src="${dataUrl}"><div style="margin-top:6px;font-size:12px">✅ 已添加，点击更换</div>
       <input type="file" id="fileInput" onchange="handleImage(event)" style="position:absolute;inset:0;opacity:0;cursor:pointer">`;
-    toast('✅ 图片已添加');
-  } catch(err){ alert('图片处理失败: '+err.message); }
+    toast('✅ 图片已添加（'+(dataUrl.length/1024).toFixed(0)+'KB）');
+  } catch(err){
+    console.error('[upload] 全部失败:', err);
+    alert('❌ 图片处理失败\n原因: '+err.message+'\n文件: '+f.name+'\n类型: '+f.type);
+  }
 }
 
-// 客户端图片压缩：canvas 缩放 + JPEG 压缩
+// FileReader 直接转 base64（兜底方案）
+function fileToDataURL(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('文件读取失败'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// canvas 压缩：缩放 + JPEG 质量压缩
 function compressImage(file, maxDim, quality){
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        let { width, height } = img;
-        if(width > maxDim || height > maxDim){
-          if(width >= height){ height = Math.round(height * maxDim / width); width = maxDim; }
-          else { width = Math.round(width * maxDim / height); height = maxDim; }
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = width; canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        // 白底（防止透明 PNG 变黑）
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(0, 0, width, height);
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', quality));
+        try {
+          let { width, height } = img;
+          if(width > maxDim || height > maxDim){
+            if(width >= height){ height = Math.round(height * maxDim / width); width = maxDim; }
+            else { width = Math.round(width * maxDim / height); height = maxDim; }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width; canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if(!ctx) return reject(new Error('无法创建 canvas'));
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+          const result = canvas.toDataURL('image/jpeg', quality);
+          if(!result || result.length < 50) return reject(new Error('canvas 输出为空'));
+          resolve(result);
+        } catch(e){ reject(e); }
       };
-      img.onerror = () => reject(new Error('图片格式无法识别'));
+      img.onerror = () => reject(new Error('图片加载失败（可能是 HEIC/HEIF 格式不支持）'));
       img.src = reader.result;
     };
     reader.onerror = () => reject(new Error('文件读取失败'));
