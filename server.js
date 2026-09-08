@@ -155,6 +155,13 @@ function saveDB(){
 }
 
 // ---- 中间件 ----
+app.use((req,res,next)=>{
+  res.setHeader('Access-Control-Allow-Origin','*');
+  res.setHeader('Access-Control-Allow-Methods','GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers','Content-Type,Authorization');
+  if(req.method==='OPTIONS') return res.sendStatus(204);
+  next();
+});
 app.use(express.json({ limit: '10mb' }));
 
 // 拦截 order.html 请求，从 GitHub 实时拉最新版本（绕过 Railway 构建缓存）
