@@ -202,9 +202,12 @@ body{display:flex;flex-direction:column;height:100dvh}
    ================================================================ */
 const API_BASE = (function(){
   const saved = localStorage.getItem('backend_url');
-  if(saved) return saved.replace(/\/$/, '');   // 去尾部斜杠
-  // 如果前端是通过 file:// 打开的（离线 PWA），同源就是无效的，默认给个空让用户自己配
-  return location.protocol === 'file:' ? '' : location.origin;
+  if(saved) return saved.replace(/\/$/, '');
+  // GitHub Pages 上自动指向 Railway
+  if(location.hostname.includes('github.io')) return 'https://family-order-production-d309.up.railway.app';
+  // file:// 打开的默认空，让用户自己配
+  if(location.protocol === 'file:') return '';
+  return location.origin;
 })();
 
 async function apiFetch(path, options){
